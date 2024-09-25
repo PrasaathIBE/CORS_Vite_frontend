@@ -18,8 +18,9 @@ import GraphicsLayer from '@arcgis/core/layers/GraphicsLayer';
 import SketchViewModel from '@arcgis/core/widgets/Sketch/SketchViewModel';
 import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync';
 import sendJsonData from '../apiService';
+import Home from '@arcgis/core/widgets/Home';
 
-const CORSMap = ({ onLocationFound, outputData }) => {
+const CORSMap = ({ onLocationFound, outputData, coordinates }) => {
   const mapRef = useRef(null);
   const distanceRef = useRef(null);
   const areaRef = useRef(null);
@@ -29,19 +30,24 @@ const CORSMap = ({ onLocationFound, outputData }) => {
   const toolbarDivRef = useRef(null);
   const sketchViewModelRef = useRef(null);
   const selectRef = useRef(null);
+  const markerLayer = useRef(null);  // Keep track of marker layer reference
+  const viewRef = useRef(null);  // Keep track of the view reference
   const [fetchedData, setFetchedData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedRadius, setSelectedRadius] = useState(50);
-  const [selectedFeatures, setSelectedFeatures] = useState([]); // State to store selected features
+  const [selectedRadius, setSelectedRadius] = useState(0);  // Radius selection state
+  const [selectedFeatures, setSelectedFeatures] = useState([]);  // State to store selected features
 
   // Fetch data once on component mount if outputData is not provided
   useEffect(() => {
     if (!outputData) {
       const date = new Date('2024-04-14');
-      sendJsonData(date)
+      const input_data = {
+        date: date,
+        options: 'Initial Load'
+      };
+      sendJsonData(input_data)
         .then(response => {
           setFetchedData(response.data);
-          console.log("Fetched data:", response.data);
           setLoading(false);
         })
         .catch(error => {
@@ -53,17 +59,11 @@ const CORSMap = ({ onLocationFound, outputData }) => {
     }
   }, []);
 
-  // Set up the map once the outputData or fetchedData is available
+  // Initialize the map (Only Once)
   useEffect(() => {
-    if (loading) return;
-
+    if (loading ) return;  // Prevent re-initialization
     if (!fetchedData && !outputData) {
       console.error("No data available to display on the map");
-      return;
-    }
-
-    if (!mapRef.current) {
-      console.error("Map container div is not available");
       return;
     }
 
@@ -73,8 +73,12 @@ const CORSMap = ({ onLocationFound, outputData }) => {
     let url;
     let presentCount = 0;
     let notPresentCount = 0;
+    let prediction_status;
 
     if (outputData) {
+      console.log("from output Data");
+      console.log(outputData);
+      prediction_status = outputData.mycs2_prediction;
       const blob = new Blob([JSON.stringify(outputData)], {
         type: "application/json",
       });
@@ -82,6 +86,9 @@ const CORSMap = ({ onLocationFound, outputData }) => {
       presentCount = outputData.status_count;
       notPresentCount = outputData.features.length - presentCount;
     } else if (fetchedData) {
+      prediction_status = false;  // Assign default value
+      console.log("from fetch Data");
+      console.log(fetchedData);
       const blob = new Blob([JSON.stringify(fetchedData)], {
         type: "application/json",
       });
@@ -92,9 +99,9 @@ const CORSMap = ({ onLocationFound, outputData }) => {
 
     const template = {
       title: "Site Info",
-      content: `
-        <b>Site ID:</b> {SITEID}<br>
-      `
+      content: `<b>Site ID:</b> {SITEID}<br>
+                <b> Description: </b> {Description}<br>
+                <b> DOMES : </b> {DOMES} <br>`
     };
 
     // Updated renderer based on status
@@ -131,27 +138,63 @@ const CORSMap = ({ onLocationFound, outputData }) => {
       ]
     };
 
+    const renderer_1 = {
+      type: "unique-value",
+      field: "STATUS",
+      uniqueValueInfos: [
+        {
+          value: "MYCS2 Prediction",
+          symbol: {
+            type: "simple-marker",
+            color: "orange",
+            size: "8px",
+            outline: {
+              color: "white",
+              width: 1,
+            },
+          },
+          label: `MYCS2 Prediction (${presentCount})`
+        },
+        {
+          value: "Observation",
+          symbol: {
+            type: "simple-marker",
+            color: "green",
+            size: "8px",
+            outline: {
+              color: "white",
+              width: 1,
+            },
+          },
+          label: `Observation (${notPresentCount})`
+        }
+      ]
+    };
+
     const geojsonLayer = new GeoJSONLayer({
       url: url,
       popupTemplate: template,
-      renderer: renderer,
+      renderer: prediction_status ? renderer_1 : renderer,
       orderBy: {
         field: "STATUS"
       }
     });
 
     const polygonGraphicsLayer = new GraphicsLayer(); // Layer to hold the drawn rectangle
+    markerLayer.current = new GraphicsLayer();  // Graphics layer for markers
     const map = new Map({
       basemap: "gray-vector",
-      layers: [geojsonLayer, polygonGraphicsLayer]
+      layers: [geojsonLayer, polygonGraphicsLayer, markerLayer.current]  // Added markerLayer
     });
 
     const view = new MapView({
       container: mapRef.current,
       center: [-95.7129, 37.0902],
-      zoom: 4,
+      zoom: 3,
       map: map
     });
+
+    viewRef.current = view;  // Store the view in the ref for later use
 
     view.when(() => {
       const legend = new Expand({
@@ -241,6 +284,12 @@ const CORSMap = ({ onLocationFound, outputData }) => {
 
       view.ui.add(measurement, "bottom-right");
 
+      // Add Home Button here
+      const homeWidget = new Home({
+        view: view
+      });
+      view.ui.add(homeWidget, "top-right");
+
       // Ensure toolbar elements are available before using them
       if (toolbarDivRef.current) {
         view.ui.add(toolbarDivRef.current, "top-left");
@@ -285,6 +334,7 @@ const CORSMap = ({ onLocationFound, outputData }) => {
         measurement.clear();  // Clear any measurement tools
         polygonGraphicsLayer.removeAll();  // Clear all graphics in the graphics layer
         view.graphics.removeAll();  // Clear any other graphics on the view
+        markerLayer.current.removeAll();  // Clear the marker from the markerLayer
         setSelectedFeatures([]);  // Clear the selected features from the state
       };
 
@@ -296,36 +346,9 @@ const CORSMap = ({ onLocationFound, outputData }) => {
         view.graphics.removeAll(); // Clear previous graphics
         sketchViewModelRef.current.create('rectangle');
       };
-
       view.on("click", (event) => {
         const lat = event.mapPoint.latitude.toFixed(2);
         const lon = event.mapPoint.longitude.toFixed(2);
-
-        // Check if the radius dropdown is active
-        if (!radiusDropdownRef.current.classList.contains('hidden')) {
-          // Draw a circle (geodesic buffer) around the clicked point
-          const centerPoint = new Point({
-            longitude: lon,
-            latitude: lat
-          });
-
-          const circleGeometry = geometryEngine.geodesicBuffer(centerPoint, selectedRadius, "kilometers");
-
-          const circleGraphic = new Graphic({
-            geometry: circleGeometry,
-            symbol: {
-              type: "simple-fill",
-              color: [0, 0, 255, 0.2],
-              outline: {
-                color: [0, 0, 255, 0.8],
-                width: 2
-              }
-            }
-          });
-
-          view.graphics.removeAll();  // Remove existing graphics, if any
-          view.graphics.add(circleGraphic);  // Add the circle to the map
-        }
 
         // Always find the location and pass it to the callback
         const locatorUrl = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer";
@@ -349,13 +372,92 @@ const CORSMap = ({ onLocationFound, outputData }) => {
           });
       });
     });
+  }, [onLocationFound, outputData, fetchedData, loading]);  // Initialize map only once
 
-    return () => {
-      if (view) {
-        view.container = null;
+  // Handle radius changes without reloading the map
+  useEffect(() => {
+    if (!viewRef.current) return;
+
+    // On map click, apply the selected radius
+    const handleClick = (event) => {
+      const lat = event.mapPoint.latitude.toFixed(2);
+      const lon = event.mapPoint.longitude.toFixed(2);
+
+      if (!radiusDropdownRef.current.classList.contains('hidden')) {
+        const centerPoint = new Point({
+          longitude: lon,
+          latitude: lat
+        });
+
+        const circleGeometry = geometryEngine.geodesicBuffer(centerPoint, selectedRadius, "kilometers");
+
+        const circleGraphic = new Graphic({
+          geometry: circleGeometry,
+          symbol: {
+            type: "simple-fill",
+            color: [0, 0, 255, 0.2],
+            outline: {
+              color: [0, 0, 255, 0.8],
+              width: 2
+            }
+          }
+        });
+
+        viewRef.current.graphics.removeAll();  // Remove existing graphics
+        viewRef.current.graphics.add(circleGraphic);  // Add new circle
       }
+
     };
-  }, [onLocationFound, outputData, fetchedData, loading, selectedRadius]);
+
+    // Attach the click event listener to the map view
+  const clickHandle = viewRef.current.on("click", handleClick);
+
+  // Cleanup the event listener on component unmount
+  return () => {
+    clickHandle.remove();  // Correct way to remove the event listener
+  };
+}, [selectedRadius]);  // Re-run only when `selectedRadius` changes
+
+  // Handle coordinates change (Update marker without reloading the map)
+  useEffect(() => {
+    if (coordinates && viewRef.current && markerLayer.current) {
+      const { lat, lon } = coordinates;
+      const point = new Point({
+        latitude: parseFloat(lat),
+        longitude: parseFloat(lon)
+      });
+
+      const markerSymbol = {
+        type: "simple-marker",  // Style for the marker
+        style: "square",
+        color: [0,110,51],  // Orange color
+        outline: {
+          color: [255, 255, 255],  // White outline
+          width: 2
+        }
+      };
+
+      const marker = new Graphic({
+        geometry: point,
+        symbol: markerSymbol
+      });
+
+      markerLayer.current.removeAll();  // Clear previous markers
+      markerLayer.current.add(marker);  // Add new marker
+
+      // Fix: Ensure goTo zooms to the correct location without padding
+      viewRef.current.goTo({
+        center: point,
+        zoom: 10  // Adjust zoom level as necessary
+      }, {
+        animate: true,  // Optional: add animation
+        duration: 1000,  // Optional: control duration of zoom
+        easing: "ease-in-out",  // Optional: control easing effect
+        maxZoom: 15,  // Ensure it doesn't zoom too much
+        padding: { top: 0, bottom: 0, left: 0, right: 0 }  // No padding, center exactly on the point
+      });
+    }
+  }, [coordinates]);  // Only update when coordinates change
 
   return (
     <div>
@@ -367,6 +469,7 @@ const CORSMap = ({ onLocationFound, outputData }) => {
         <div ref={radiusDropdownRef} className="esri-widget esri-interactive absolute top-8 left-[60px] z-10 bg-white shadow-md p-2 rounded hidden">
           <label htmlFor="radius-select">Choose Radius:</label>
           <select id="radius-select" onChange={(e) => setSelectedRadius(Number(e.target.value))} value={selectedRadius}>
+            <option value={0}>Choose km</option>
             <option value={50}>50 km</option>
             <option value={100}>100 km</option>
             <option value={200}>200 km</option>

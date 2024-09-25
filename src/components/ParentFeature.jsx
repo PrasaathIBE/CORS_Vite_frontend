@@ -9,6 +9,8 @@ const ParentFeature = () => {
     latitude: "",
     longitude: ""
   });
+  console.log(locationInfo);
+  const [coordinates, setCoordinates] = useState(null);  // State for the coordinates from SiteStats
 
   return (
     <div className="flex flex-col h-screen">
@@ -17,10 +19,10 @@ const ParentFeature = () => {
       </header>
       <div className="flex flex-1">
         <div className="flex-[5] p-2.5 relative">
-          <CORSMap onLocationFound={setLocationInfo} outputData={outputData} /> {/* Pass outputData to CORSMap */}
+          <CORSMap onLocationFound={setLocationInfo} outputData={outputData} coordinates={coordinates} /> {/* Pass outputData to CORSMap */}
         </div>
         <div className="flex-1 p-5 bg-gray-200 overflow-y-auto">
-          <SiteStats setOutputData={setOutputData} /> {/* Pass setOutputData to SiteStats */}
+          <SiteStats setOutputData={setOutputData} setCoordinates={setCoordinates}/> {/* Pass setOutputData to SiteStats */}
           {locationInfo.address && (
             <div className="mt-5 p-2.5 border border-gray-300 rounded-lg bg-gray-100 w-full">
               <h2 className="mb-2.5">Selected Location's</h2>

@@ -24,14 +24,19 @@ ChartJS.register(
   Legend,
   ArcElement
 );
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { ChevronDownIcon } from '@heroicons/react/20/solid'
 
-const SiteStats = ({ setOutputData }) => {  // Accept setOutputData as a prop
+const SiteStats = ({ setOutputData, setCoordinates }) => {  // Accept setOutputData as a prop
   const [stats, setStats] = useState({});
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [disableInteractions, setDisableInteractions] = useState(false);
   const [activeTab, setActiveTab] = useState('bar');
   const [selectedDate, setSelectedDate] = useState(new Date('2024-04-14')); // State for selected date
   const [errorMessage, setErrorMessage] = useState('');  // State for error message
+  const [lat, setLat] = useState("");  // For latitude input
+  const [lon, setLon] = useState("");  // For longitude input
+  const [selectedOption, setSelectedOption] = useState('Static JSON + STACOV File'); // State for selected dropdown option
 
   useEffect(() => {
     fetch("/CORS_Site_JSON_1.json")
@@ -69,38 +74,178 @@ const SiteStats = ({ setOutputData }) => {  // Accept setOutputData as a prop
   };
 
   const datefun = (date) => {
-    sendJsonData(date)
+    const input_data = {
+      date: date,
+      options: selectedOption
+    };
+    sendJsonData(input_data)
       .then(response => {
         setOutputData(response.data);  // This will trigger the useEffect in the parent component to log the new data
       })
       .catch(error => {
         console.error("There was an error!", error);
-        setErrorMessage('Please choose a date between 14 April 2024 to 31 May 2024');
-        setModalIsOpen(true);  // Show the modal with the error message
+        if (selectedOption === 'Static JSON + STACOV File') {
+          setErrorMessage('Please choose a date between 14 April 2024 to 31 May 2024');
+          setModalIsOpen(true);  // Show the modal with the error message
+        }
+        if (selectedOption === 'Over All Vs MYCS2') {
+          setErrorMessage('No data found for the Chosen date');
+          setModalIsOpen(true);  // Show the modal with the error message
+        }
+        
       });
   };
+
+  const handleCoordinateSearch = (event) => {
+    event.preventDefault(); // Prevent the page from reloading
+    if (lat && lon) {
+      setCoordinates({ lat, lon });  // Pass the coordinates to ParentFeature
+    }
+  };
+
+  const handleSelect = (option) => {
+    setSelectedOption(option); // Update selected option in the dropdown
+    setDisableInteractions(false); // Enable interactions if they were disabled
+    setErrorMessage(''); // Clear any error messages
+    if(option==='Static JSON + STACOV File'){
+      const newDate = new Date('2024-04-14'); // Set date to 01-01-2010
+      setSelectedDate(newDate); // Update selected date state
+      const input_data = {
+        date: newDate,
+        options: option
+      };
+      sendJsonData(input_data)
+      .then(response => {
+        setOutputData(response.data);  // This will trigger the useEffect in the parent component to log the new data
+      })
+      .catch(error => {
+        console.error("There was an error!", error);
+      });
+    }
+    else if(option === 'Over All Site Info'){
+      const input_data = {
+        date: selectedDate,
+        options: option
+      };
+      sendJsonData(input_data)
+      .then(response => {
+        setOutputData(response.data);  // This will trigger the useEffect in the parent component to log the new data
+      })
+      .catch(error => {
+        console.error("There was an error!", error);
+      });
+    }
+    else if(option === 'Over All Vs MYCS2'){
+      const newDate = new Date('2010-01-01'); // Set date to 01-01-2010
+      setSelectedDate(newDate); // Update selected date state
+      const input_data = {
+        date: newDate,
+        options: option
+      };
+      sendJsonData(input_data)
+      .then(response => {
+        setOutputData(response.data);  // This will trigger the useEffect in the parent component to log the new data
+      })
+      .catch(error => {
+        console.error("There was an error!", error);
+      });
+    }
+  };
+
 
   return (
     <div className={`site-stats ${disableInteractions ? 'pointer-events-none select-none' : ''}`}>
       <h1>Additional Info</h1>
-      {/* <h2>Site Statistics</h2> */}
+      <h3 className="mt-10">Choose Dataset</h3>
       
-      {/* <button onClick={openModal} className="px-5 py-2.5 mt-3 text-base rounded-lg border-none cursor-pointer text-white bg-blue-500">Show Graph</button> */}
+      {/* Dropdown for selecting an option */}
+      <Menu as="div" className="relative inline-block text-left">
+        <div>
+          <MenuButton className="inline-flex w-full justify-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            {selectedOption} {/* This will show the selected option */}
+            <ChevronDownIcon aria-hidden="true" className="-mr-1 h-5 w-5 text-gray-400" />
+          </MenuButton>
+        </div>
+
+        <MenuItems
+          transition
+          className="absolute  z-10 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 transition focus:outline-none data-[closed]:scale-95 data-[closed]:transform data-[closed]:opacity-0 data-[enter]:duration-100 data-[leave]:duration-75 data-[enter]:ease-out data-[leave]:ease-in"
+        >
+          <div className="py-1">
+            <MenuItem>
+              <a
+                href="#"
+                onClick={() => handleSelect('Static JSON + STACOV File')}
+                className="block px-4 py-2 text-sm text-gray-700 data-[focus]:bg-gray-100 data-[focus]:text-gray-900"
+              >
+                Static JSON + STACOV File
+              </a>
+            </MenuItem>
+            <MenuItem>
+              <a
+                href="#"
+                onClick={() => handleSelect('Over All Site Info')}
+                className="block px-4 py-2 text-sm text-gray-700 data-[focus]:bg-gray-100 data-[focus]:text-gray-900"
+              >
+                Over All CORS Site
+              </a>
+            </MenuItem>
+            <MenuItem>
+              <a
+                href="#"
+                onClick={() => handleSelect('Over All Vs MYCS2')}
+                className="block px-4 py-2 text-sm text-gray-700 data-[focus]:bg-gray-100 data-[focus]:text-gray-900"
+              >
+                Over All CORS Vs MYCS2 Predictions
+              </a>
+            </MenuItem>
+          </div>
+        </MenuItems>
+      </Menu>
       
       {/* Date Picker */}
-      <div className="row mt-3">
-        <div className="col-sm-6 col-lg-5 mb-3 mb-sm-0">
-          <label className="block text-gray-700 text-sm font-bold mb-2">Select Date:</label>
-          <DatePicker
-            selected={selectedDate}
-            onChange={date => {
-              setSelectedDate(date); // Update the selected date state
-              datefun(date); // Call the datefun function
-            }}
+      {(selectedOption === 'Static JSON + STACOV File' || selectedOption === 'Over All Vs MYCS2') && (
+        <div className="row mt-3">
+          <div className="col-sm-6 col-lg-5 mb-3 mb-sm-0">
+            <label className="block text-gray-700 text-sm font-bold mb-2">Select Date:</label>
+            <DatePicker
+              selected={selectedDate}
+              onChange={date => {
+                setSelectedDate(date); // Update the selected date state
+                datefun(date); // Call the datefun function
+              }}
+              className="block w-full p-2 border rounded"
+              dateFormat="yyyy/MM/dd"
+            />
+          </div>
+        </div>
+      )}
+      {/* Coordinate Search Section */}
+      <div className="mt-5">
+        <h3>Coordinate Search</h3>
+        <div>
+          <label>Latitude: </label>
+          <input
+            type="number"
+            value={lat}
+            onChange={(e) => setLat(e.target.value)}
+            placeholder="Enter Latitude"
             className="block w-full p-2 border rounded"
-            dateFormat="yyyy/MM/dd"
           />
         </div>
+        <div>
+          <label>Longitude: </label>
+          <input
+            type="number"
+            value={lon}
+            onChange={(e) => setLon(e.target.value)}
+            placeholder="Enter Longitude"
+            className="block w-full p-2 border rounded"
+          />
+        </div>
+        <button onClick={handleCoordinateSearch} className="p-2 mt-2 bg-blue-500 text-white">
+          Search
+        </button>
       </div>
       
       <Modal
